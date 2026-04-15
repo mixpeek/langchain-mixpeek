@@ -432,3 +432,56 @@ class TestPlugins:
         assert result["status"] == "success"
         body = mock_api.call_args[1].get("body") or mock_api.call_args[0][1]
         assert body["inputs"] == {"text": "hello"}
+
+
+class TestConversions:
+    def test_from_retriever(self):
+        patcher, _ = _mock_mixpeek()
+        with patcher:
+            store = MixpeekVectorStore.from_retriever(
+                api_key="mxp_test",
+                namespace="test-ns",
+                retriever_id="ret_test",
+            )
+
+        assert store.api_key == "mxp_test"
+        assert store.retriever_id == "ret_test"
+        assert store.bucket_id == ""
+        assert store.collection_id == ""
+
+    def test_as_retriever(self):
+        from langchain_mixpeek import MixpeekRetriever
+
+        patcher, _ = _mock_mixpeek()
+        with patcher:
+            store = _make_store()
+            retriever = store.as_retriever()
+
+        assert isinstance(retriever, MixpeekRetriever)
+        assert retriever.api_key == "mxp_test"
+        assert retriever.retriever_id == "ret_test"
+        assert retriever.namespace == "test-ns"
+
+    def test_as_tool(self):
+        from langchain_mixpeek import MixpeekTool
+
+        patcher, _ = _mock_mixpeek()
+        with patcher:
+            store = _make_store()
+            tool = store.as_tool()
+
+        assert isinstance(tool, MixpeekTool)
+        assert tool.api_key == "mxp_test"
+        assert tool.retriever_id == "ret_test"
+
+    def test_as_toolkit(self):
+        from langchain_mixpeek import MixpeekToolkit
+
+        patcher, _ = _mock_mixpeek()
+        with patcher:
+            store = _make_store()
+            toolkit = store.as_toolkit()
+
+        assert isinstance(toolkit, MixpeekToolkit)
+        assert len(toolkit.get_tools()) == 6
+        assert toolkit.store is store

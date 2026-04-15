@@ -586,6 +586,80 @@ class MixpeekVectorStore(VectorStore):
         store.add_texts(texts, metadatas=metadatas)
         return store
 
+    @classmethod
+    def from_retriever(
+        cls,
+        api_key: str,
+        namespace: str,
+        retriever_id: str,
+        **kwargs: Any,
+    ) -> "MixpeekVectorStore":
+        """Create a search-only store from minimal config.
+
+        Use this when you only need to search (no ingest). The bucket_id
+        and collection_id are set to empty strings.
+
+        Args:
+            api_key: Mixpeek API key.
+            namespace: Namespace to search.
+            retriever_id: Retriever ID for search queries.
+
+        Example:
+            .. code-block:: python
+
+                store = MixpeekVectorStore.from_retriever(
+                    api_key="mxp_...",
+                    namespace="my-ns",
+                    retriever_id="ret_abc123",
+                )
+                docs = store.similarity_search("red cup")
+        """
+        return cls(
+            api_key=api_key,
+            namespace=namespace,
+            bucket_id=kwargs.pop("bucket_id", ""),
+            collection_id=kwargs.pop("collection_id", ""),
+            retriever_id=retriever_id,
+            **kwargs,
+        )
+
+    def as_retriever(self, **kwargs: Any) -> "MixpeekRetriever":
+        """Convert this store into a MixpeekRetriever.
+
+        Returns a retriever configured with the same credentials.
+        """
+        from langchain_mixpeek.retriever import MixpeekRetriever
+
+        return MixpeekRetriever(
+            api_key=self.api_key,
+            namespace=self.namespace,
+            retriever_id=self.retriever_id,
+            content_field=self.content_field,
+            **kwargs,
+        )
+
+    def as_tool(self, **kwargs: Any) -> "BaseTool":
+        """Convert this store into a MixpeekTool for agent use."""
+        from langchain_mixpeek.tool import MixpeekTool
+
+        return MixpeekTool(
+            api_key=self.api_key,
+            namespace=self.namespace,
+            retriever_id=self.retriever_id,
+            content_field=self.content_field,
+            **kwargs,
+        )
+
+    def as_toolkit(self, **kwargs: Any) -> "MixpeekToolkit":
+        """Convert this store into a full MixpeekToolkit for agents.
+
+        Returns a toolkit with search, ingest, process, classify,
+        cluster, and alert tools.
+        """
+        from langchain_mixpeek.toolkit import MixpeekToolkit
+
+        return MixpeekToolkit(store=self, **kwargs)
+
     def delete(self, ids: Optional[List[str]] = None, **kwargs: Any) -> None:
         """Delete documents by ID."""
         if ids:

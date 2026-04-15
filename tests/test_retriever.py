@@ -226,6 +226,32 @@ class TestMixpeekRetriever:
         assert docs[0].page_content == "A sunny day."
         assert "caption" not in docs[0].metadata
 
+    def test_as_tool_returns_mixpeek_tool(self):
+        from langchain_mixpeek import MixpeekTool
+
+        patcher, _ = _mock_mixpeek()
+        with patcher:
+            retriever = _make_retriever()
+            tool = retriever.as_tool()
+
+        assert isinstance(tool, MixpeekTool)
+        assert tool.api_key == "mxp_test"
+        assert tool.retriever_id == "ret_test123"
+        assert tool.namespace == "test-ns"
+        assert tool.top_k == 10
+        assert tool.content_field == "text"
+
+    def test_as_tool_preserves_custom_fields(self):
+        from langchain_mixpeek import MixpeekTool
+
+        patcher, _ = _mock_mixpeek()
+        with patcher:
+            retriever = _make_retriever(top_k=3, content_field="caption")
+            tool = retriever.as_tool()
+
+        assert tool.top_k == 3
+        assert tool.content_field == "caption"
+
 
 # ---------------------------------------------------------------------------
 # AsyncMixpeekRetriever tests

@@ -88,6 +88,29 @@ class MixpeekRetriever(BaseRetriever):
             docs.append(Document(page_content=content, metadata=metadata))
         return docs
 
+    def as_tool(self, **kwargs) -> "BaseTool":
+        """Convert this retriever into a LangChain tool for agent use.
+
+        Returns a ``MixpeekTool`` configured with the same credentials
+        and settings as this retriever.
+
+        Example:
+            .. code-block:: python
+
+                retriever = MixpeekRetriever(api_key="mxp_...", ...)
+                agent = create_react_agent(llm, [retriever.as_tool()])
+        """
+        from langchain_mixpeek.tool import MixpeekTool
+
+        return MixpeekTool(
+            api_key=self.api_key,
+            retriever_id=self.retriever_id,
+            namespace=self.namespace,
+            top_k=self.top_k,
+            content_field=self.content_field,
+            **kwargs,
+        )
+
     def _get_relevant_documents(
         self,
         query: str,
