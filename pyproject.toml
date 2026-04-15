@@ -4,12 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "langchain-mixpeek"
-version = "0.4.0"
-description = "LangChain integration for Mixpeek — multimodal retriever and tool for AI agents"
+version = "0.4.2"
+description = "Give your LangChain agents eyes, ears, and memory — multimodal search, ingestion, and monitoring for video, images, audio, and documents"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [{name = "Mixpeek", email = "info@mixpeek.com"}]
-keywords = ["langchain", "mixpeek", "multimodal", "retriever", "rag", "agents", "video", "ai"]
+keywords = ["langchain", "mixpeek", "multimodal", "retriever", "rag", "agents", "video", "audio", "image", "ai", "toolkit", "vectorstore"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
