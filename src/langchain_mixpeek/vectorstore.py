@@ -1,5 +1,7 @@
 """Mixpeek vector store for LangChain — add and search multimodal documents."""
 
+import json
+import urllib.request
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from langchain_core.documents import Document
@@ -39,7 +41,9 @@ class MixpeekVectorStore(VectorStore):
     bucket_id: str
     collection_id: str
     retriever_id: str
-    content_field: str = "transcript_chunk"
+    content_field: str = "text"
+
+    blob_property: str = "content"
 
     def __init__(
         self,
@@ -48,7 +52,8 @@ class MixpeekVectorStore(VectorStore):
         bucket_id: str,
         collection_id: str,
         retriever_id: str,
-        content_field: str = "transcript_chunk",
+        content_field: str = "text",
+        blob_property: str = "content",
         **kwargs: Any,
     ):
         self.api_key = api_key
@@ -57,7 +62,9 @@ class MixpeekVectorStore(VectorStore):
         self.collection_id = collection_id
         self.retriever_id = retriever_id
         self.content_field = content_field
+        self.blob_property = blob_property
         self._client = Mixpeek(api_key=api_key, namespace=namespace)
+        self._base_url = "https://api.mixpeek.com/v1"
 
     @property
     def embeddings(self):
@@ -86,9 +93,8 @@ class MixpeekVectorStore(VectorStore):
         object_ids = []
         meta_list = metadatas or [{}] * len(list(texts))
         for text, meta in zip(texts, meta_list):
-            result = self._client.buckets.upload(
-                self.bucket_id,
-                data=text,
+            result = self._upload_object(
+                blobs=[{"property": self.blob_property, "type": "text", "data": text}],
                 metadata=meta,
             )
             object_ids.append(result.get("object_id", ""))
@@ -98,6 +104,7 @@ class MixpeekVectorStore(VectorStore):
         self,
         urls: List[str],
         metadatas: Optional[List[dict]] = None,
+        blob_type: str = "image",
         **kwargs: Any,
     ) -> List[str]:
         """Upload files by URL to a Mixpeek bucket.
@@ -107,6 +114,7 @@ class MixpeekVectorStore(VectorStore):
         Args:
             urls: File URLs to ingest.
             metadatas: Optional metadata dicts for each URL.
+            blob_type: Blob type for the URLs (e.g., "image", "video", "text").
 
         Returns:
             List of object IDs from the upload.
@@ -114,13 +122,34 @@ class MixpeekVectorStore(VectorStore):
         object_ids = []
         meta_list = metadatas or [{}] * len(urls)
         for url, meta in zip(urls, meta_list):
-            result = self._client.buckets.upload(
-                self.bucket_id,
-                url=url,
+            result = self._upload_object(
+                blobs=[{"property": self.blob_property, "type": blob_type, "url": url}],
                 metadata=meta,
             )
             object_ids.append(result.get("object_id", ""))
         return object_ids
+
+    def _upload_object(
+        self,
+        blobs: List[Dict[str, Any]],
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Upload an object to the bucket using the blobs API format."""
+        body: Dict[str, Any] = {"blobs": blobs}
+        if metadata:
+            body["metadata"] = metadata
+        req = urllib.request.Request(
+            f"{self._base_url}/buckets/{self.bucket_id}/objects",
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+                "X-Namespace": self.namespace,
+            },
+            data=json.dumps(body).encode(),
+        )
+        resp = urllib.request.urlopen(req)
+        return json.loads(resp.read().decode())
 
     def trigger_processing(self) -> Dict[str, Any]:
         """Trigger the collection to process newly uploaded objects.

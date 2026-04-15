@@ -42,10 +42,15 @@ def _mock_mixpeek(search_results=None, upload_result=None):
         "results": search_results,
         "status": "completed",
     }
-    mock_client.buckets.upload.return_value = upload_result or {"object_id": "obj_123"}
     mock_client.collections.trigger.return_value = {"batch_id": "batch_abc", "status": "processing"}
     mock_client.documents.delete.return_value = {"status": "deleted"}
     return patch("langchain_mixpeek.vectorstore.Mixpeek", return_value=mock_client), mock_client
+
+
+def _mock_upload(upload_result=None):
+    """Mock the _upload_object method on MixpeekVectorStore."""
+    result = upload_result or {"object_id": "obj_123"}
+    return patch.object(MixpeekVectorStore, "_upload_object", return_value=result)
 
 
 class TestMixpeekVectorStore:
@@ -80,22 +85,24 @@ class TestMixpeekVectorStore:
         assert len(docs) == 1
 
     def test_add_texts(self):
-        patcher, mock_client = _mock_mixpeek()
-        with patcher:
+        patcher, _ = _mock_mixpeek()
+        upload_patcher = _mock_upload()
+        with patcher, upload_patcher as mock_upload:
             store = _make_store()
             ids = store.add_texts(["hello", "world"], metadatas=[{"a": 1}, {"b": 2}])
 
         assert len(ids) == 2
         assert ids[0] == "obj_123"
-        assert mock_client.buckets.upload.call_count == 2
-        call1 = mock_client.buckets.upload.call_args_list[0]
-        assert call1[0][0] == "bkt_test"
-        assert call1[1]["data"] == "hello"
+        assert mock_upload.call_count == 2
+        call1 = mock_upload.call_args_list[0]
+        assert call1[1]["blobs"][0]["data"] == "hello"
+        assert call1[1]["blobs"][0]["type"] == "text"
         assert call1[1]["metadata"] == {"a": 1}
 
     def test_add_urls(self):
-        patcher, mock_client = _mock_mixpeek()
-        with patcher:
+        patcher, _ = _mock_mixpeek()
+        upload_patcher = _mock_upload()
+        with patcher, upload_patcher as mock_upload:
             store = _make_store()
             ids = store.add_urls(
                 ["https://example.com/video.mp4"],
@@ -103,8 +110,8 @@ class TestMixpeekVectorStore:
             )
 
         assert len(ids) == 1
-        call = mock_client.buckets.upload.call_args
-        assert call[1]["url"] == "https://example.com/video.mp4"
+        call = mock_upload.call_args
+        assert call[1]["blobs"][0]["url"] == "https://example.com/video.mp4"
         assert call[1]["metadata"] == {"source": "test"}
 
     def test_trigger_processing(self):
@@ -131,8 +138,9 @@ class TestMixpeekVectorStore:
         assert store.embeddings is None
 
     def test_from_texts(self):
-        patcher, mock_client = _mock_mixpeek()
-        with patcher:
+        patcher, _ = _mock_mixpeek()
+        upload_patcher = _mock_upload()
+        with patcher, upload_patcher as mock_upload:
             store = MixpeekVectorStore.from_texts(
                 ["test"],
                 api_key="mxp_test",
@@ -142,7 +150,7 @@ class TestMixpeekVectorStore:
                 retriever_id="ret_test",
             )
 
-        assert mock_client.buckets.upload.call_count == 1
+        assert mock_upload.call_count == 1
 
     def test_empty_search_results(self):
         patcher, _ = _mock_mixpeek(search_results=[])

@@ -15,6 +15,7 @@ FAKE_API_RESULTS = [
     {
         "document_id": "doc_001",
         "score": 0.95,
+        "text": "The red cup is on the table.",
         "metadata": {
             "transcript_chunk": "The red cup is on the table.",
             "source_url": "https://example.com/video.mp4",
@@ -24,6 +25,7 @@ FAKE_API_RESULTS = [
     {
         "document_id": "doc_002",
         "score": 0.80,
+        "text": "A red cup sits near the window.",
         "metadata": {
             "transcript_chunk": "A red cup sits near the window.",
             "source_url": "https://example.com/video2.mp4",
@@ -33,6 +35,7 @@ FAKE_API_RESULTS = [
     {
         "document_id": "doc_003",
         "score": 0.65,
+        "text": "Someone picks up the red cup.",
         "metadata": {
             "transcript_chunk": "Someone picks up the red cup.",
             "source_url": "https://example.com/video3.mp4",

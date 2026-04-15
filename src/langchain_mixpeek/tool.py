@@ -41,7 +41,7 @@ class MixpeekTool(BaseTool):
     namespace: str = Field(description="Mixpeek namespace to search")
     top_k: int = Field(default=5, description="Maximum number of results to return")
     content_field: str = Field(
-        default="transcript_chunk",
+        default="text",
         description="Metadata field to surface as 'content' in each result",
     )
     return_direct: bool = False

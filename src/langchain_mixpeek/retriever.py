@@ -36,7 +36,7 @@ class MixpeekRetriever(BaseRetriever):
     namespace: str = Field(description="Mixpeek namespace to search")
     top_k: int = Field(default=10, description="Maximum number of results to return")
     content_field: str = Field(
-        default="transcript_chunk",
+        default="text",
         description="Metadata field to use as Document page_content",
     )
     filters: Optional[dict] = Field(
