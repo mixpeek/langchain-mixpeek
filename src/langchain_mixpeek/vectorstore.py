@@ -110,11 +110,15 @@ class MixpeekVectorStore(VectorStore):
         """Upload files by URL to a Mixpeek bucket.
 
         Use this for images, videos, PDFs, and other files accessible via URL.
+        For type-specific convenience methods, see :meth:`add_images`,
+        :meth:`add_videos`, :meth:`add_audio`, :meth:`add_pdfs`, and
+        :meth:`add_excel`.
 
         Args:
             urls: File URLs to ingest.
             metadatas: Optional metadata dicts for each URL.
-            blob_type: Blob type for the URLs (e.g., "image", "video", "text").
+            blob_type: Blob type — one of ``"image"``, ``"video"``,
+                ``"audio"``, ``"text"``, ``"pdf"``, ``"excel"``.
 
         Returns:
             List of object IDs from the upload.
@@ -128,6 +132,71 @@ class MixpeekVectorStore(VectorStore):
             )
             object_ids.append(result.get("object_id", ""))
         return object_ids
+
+    def add_images(
+        self,
+        urls: List[str],
+        metadatas: Optional[List[dict]] = None,
+        **kwargs: Any,
+    ) -> List[str]:
+        """Upload images by URL.
+
+        Supported formats: JPG, PNG, GIF, WebP, etc.
+        Processed by image, multimodal, face, or IP-safety extractors.
+        """
+        return self.add_urls(urls, metadatas=metadatas, blob_type="image", **kwargs)
+
+    def add_videos(
+        self,
+        urls: List[str],
+        metadatas: Optional[List[dict]] = None,
+        **kwargs: Any,
+    ) -> List[str]:
+        """Upload videos by URL.
+
+        Supported formats: MP4, MOV, AVI, WebM, etc.
+        Processed by multimodal extractor (scene detection, transcription,
+        frame extraction, OCR, thumbnails).
+        """
+        return self.add_urls(urls, metadatas=metadatas, blob_type="video", **kwargs)
+
+    def add_audio(
+        self,
+        urls: List[str],
+        metadatas: Optional[List[dict]] = None,
+        **kwargs: Any,
+    ) -> List[str]:
+        """Upload audio files by URL.
+
+        Supported formats: MP3, WAV, FLAC, OGG, etc.
+        Processed by audio fingerprint extractor (CLAP embeddings).
+        """
+        return self.add_urls(urls, metadatas=metadatas, blob_type="audio", **kwargs)
+
+    def add_pdfs(
+        self,
+        urls: List[str],
+        metadatas: Optional[List[dict]] = None,
+        **kwargs: Any,
+    ) -> List[str]:
+        """Upload PDF documents by URL.
+
+        Processed by document graph extractor (OCR, layout analysis,
+        block classification, text extraction with bounding boxes).
+        """
+        return self.add_urls(urls, metadatas=metadatas, blob_type="pdf", **kwargs)
+
+    def add_excel(
+        self,
+        urls: List[str],
+        metadatas: Optional[List[dict]] = None,
+        **kwargs: Any,
+    ) -> List[str]:
+        """Upload spreadsheets by URL.
+
+        Supported formats: XLSX, XLS, CSV.
+        """
+        return self.add_urls(urls, metadatas=metadatas, blob_type="excel", **kwargs)
 
     def _upload_object(
         self,

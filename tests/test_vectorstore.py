@@ -159,3 +159,68 @@ class TestMixpeekVectorStore:
             docs = store.similarity_search("nothing")
 
         assert docs == []
+
+    def test_add_images(self):
+        patcher, _ = _mock_mixpeek()
+        upload_patcher = _mock_upload()
+        with patcher, upload_patcher as mock_upload:
+            store = _make_store()
+            ids = store.add_images(["https://example.com/photo.jpg"])
+
+        assert len(ids) == 1
+        assert mock_upload.call_args[1]["blobs"][0]["type"] == "image"
+        assert mock_upload.call_args[1]["blobs"][0]["url"] == "https://example.com/photo.jpg"
+
+    def test_add_videos(self):
+        patcher, _ = _mock_mixpeek()
+        upload_patcher = _mock_upload()
+        with patcher, upload_patcher as mock_upload:
+            store = _make_store()
+            ids = store.add_videos(["https://example.com/clip.mp4"])
+
+        assert len(ids) == 1
+        assert mock_upload.call_args[1]["blobs"][0]["type"] == "video"
+
+    def test_add_audio(self):
+        patcher, _ = _mock_mixpeek()
+        upload_patcher = _mock_upload()
+        with patcher, upload_patcher as mock_upload:
+            store = _make_store()
+            ids = store.add_audio(["https://example.com/song.mp3"])
+
+        assert len(ids) == 1
+        assert mock_upload.call_args[1]["blobs"][0]["type"] == "audio"
+
+    def test_add_pdfs(self):
+        patcher, _ = _mock_mixpeek()
+        upload_patcher = _mock_upload()
+        with patcher, upload_patcher as mock_upload:
+            store = _make_store()
+            ids = store.add_pdfs(["https://example.com/doc.pdf"])
+
+        assert len(ids) == 1
+        assert mock_upload.call_args[1]["blobs"][0]["type"] == "pdf"
+
+    def test_add_excel(self):
+        patcher, _ = _mock_mixpeek()
+        upload_patcher = _mock_upload()
+        with patcher, upload_patcher as mock_upload:
+            store = _make_store()
+            ids = store.add_excel(["https://example.com/data.xlsx"])
+
+        assert len(ids) == 1
+        assert mock_upload.call_args[1]["blobs"][0]["type"] == "excel"
+
+    def test_add_videos_with_metadata(self):
+        patcher, _ = _mock_mixpeek()
+        upload_patcher = _mock_upload()
+        with patcher, upload_patcher as mock_upload:
+            store = _make_store()
+            ids = store.add_videos(
+                ["https://example.com/a.mp4", "https://example.com/b.mp4"],
+                metadatas=[{"title": "A"}, {"title": "B"}],
+            )
+
+        assert len(ids) == 2
+        assert mock_upload.call_args_list[0][1]["metadata"] == {"title": "A"}
+        assert mock_upload.call_args_list[1][1]["metadata"] == {"title": "B"}
