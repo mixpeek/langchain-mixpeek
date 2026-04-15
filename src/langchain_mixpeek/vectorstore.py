@@ -198,6 +198,32 @@ class MixpeekVectorStore(VectorStore):
         """
         return self.add_urls(urls, metadatas=metadatas, blob_type="excel", **kwargs)
 
+    # ------------------------------------------------------------------
+    # Internal HTTP helpers
+    # ------------------------------------------------------------------
+
+    def _api_request(
+        self,
+        path: str,
+        method: str = "POST",
+        body: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Make an authenticated request to the Mixpeek API."""
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "X-Namespace": self.namespace,
+        }
+        data = json.dumps(body).encode() if body is not None else None
+        req = urllib.request.Request(
+            f"{self._base_url}{path}",
+            method=method,
+            headers=headers,
+            data=data,
+        )
+        resp = urllib.request.urlopen(req)
+        return json.loads(resp.read().decode())
+
     def _upload_object(
         self,
         blobs: List[Dict[str, Any]],
@@ -207,18 +233,9 @@ class MixpeekVectorStore(VectorStore):
         body: Dict[str, Any] = {"blobs": blobs}
         if metadata:
             body["metadata"] = metadata
-        req = urllib.request.Request(
-            f"{self._base_url}/buckets/{self.bucket_id}/objects",
-            method="POST",
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-                "X-Namespace": self.namespace,
-            },
-            data=json.dumps(body).encode(),
+        return self._api_request(
+            f"/buckets/{self.bucket_id}/objects", body=body,
         )
-        resp = urllib.request.urlopen(req)
-        return json.loads(resp.read().decode())
 
     def trigger_processing(self) -> Dict[str, Any]:
         """Trigger the collection to process newly uploaded objects.
@@ -230,6 +247,277 @@ class MixpeekVectorStore(VectorStore):
             Trigger response with batch status.
         """
         return self._client.collections.trigger(self.collection_id)
+
+    # ------------------------------------------------------------------
+    # Taxonomies
+    # ------------------------------------------------------------------
+
+    def create_taxonomy(
+        self,
+        name: str,
+        config: Dict[str, Any],
+        description: str = "",
+    ) -> Dict[str, Any]:
+        """Create a taxonomy for classifying documents.
+
+        Taxonomies enrich documents by matching them against retriever-based
+        criteria. They run automatically during batch processing (phase 1).
+
+        Args:
+            name: Unique taxonomy name within the namespace.
+            config: Taxonomy configuration dict. Must include:
+
+                - ``taxonomy_type``: ``"flat"`` or ``"hierarchical"``
+                - ``retriever_id``: Retriever that defines matching logic
+                - ``collection_id``: Target collection (flat only)
+                - ``input_mappings``: How document fields map to retriever inputs
+                - ``enrichment_fields``: Which fields to write back
+
+            description: Optional description.
+
+        Returns:
+            Created taxonomy with ``taxonomy_id``, ``taxonomy_name``, etc.
+        """
+        body: Dict[str, Any] = {
+            "taxonomy_name": name,
+            "config": config,
+        }
+        if description:
+            body["description"] = description
+        return self._api_request("/taxonomies", body=body)
+
+    def list_taxonomies(self) -> Dict[str, Any]:
+        """List all taxonomies in the namespace."""
+        return self._api_request("/taxonomies/list", body={})
+
+    def get_taxonomy(self, taxonomy_id: str) -> Dict[str, Any]:
+        """Get a taxonomy by ID or name."""
+        return self._api_request(f"/taxonomies/{taxonomy_id}", method="GET")
+
+    def execute_taxonomy(
+        self,
+        taxonomy_id: str,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """Test-execute a taxonomy (validation only, not production).
+
+        Args:
+            taxonomy_id: Taxonomy ID or name.
+
+        Returns:
+            Execution results with matched documents.
+        """
+        return self._api_request(
+            f"/taxonomies/execute/{taxonomy_id}", body=kwargs or {},
+        )
+
+    def delete_taxonomy(self, taxonomy_id: str) -> Dict[str, Any]:
+        """Delete a taxonomy and all its versions."""
+        return self._api_request(
+            f"/taxonomies/{taxonomy_id}", method="DELETE",
+        )
+
+    # ------------------------------------------------------------------
+    # Clusters
+    # ------------------------------------------------------------------
+
+    def create_cluster(
+        self,
+        cluster_type: str = "vector",
+        name: Optional[str] = None,
+        collection_ids: Optional[List[str]] = None,
+        vector_config: Optional[Dict[str, Any]] = None,
+        attribute_config: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """Create a cluster configuration.
+
+        Clusters group documents by embedding similarity (vector) or
+        metadata attributes. They run during batch processing (phase 2).
+
+        Args:
+            cluster_type: ``"vector"`` or ``"attribute"``.
+            name: Optional cluster name.
+            collection_ids: Collections to cluster. Defaults to this
+                store's ``collection_id``.
+            vector_config: For vector clustering — algorithm, feature_uris,
+                algorithm_params (n_clusters, eps, etc.).
+                Algorithms: kmeans, dbscan, hdbscan, agglomerative,
+                spectral, gaussian_mixture, mean_shift, optics.
+            attribute_config: For attribute clustering — attributes list,
+                hierarchical_grouping, aggregation_method.
+
+        Returns:
+            Created cluster with ``cluster_id``, ``status``, etc.
+        """
+        body: Dict[str, Any] = {
+            "collection_ids": collection_ids or [self.collection_id],
+            "cluster_type": cluster_type,
+        }
+        if name:
+            body["cluster_name"] = name
+        if vector_config:
+            body["vector_config"] = vector_config
+        if attribute_config:
+            body["attribute_config"] = attribute_config
+        body.update(kwargs)
+        return self._api_request("/clusters", body=body)
+
+    def execute_cluster(self, cluster_id: str) -> Dict[str, Any]:
+        """Queue a clustering job (async).
+
+        Returns:
+            Execution status with batch info.
+        """
+        return self._api_request(f"/clusters/{cluster_id}/execute", body={})
+
+    def get_cluster_groups(self, cluster_id: str) -> Dict[str, Any]:
+        """Get cluster groups with labels, summaries, and member counts.
+
+        Returns:
+            Dict with ``groups`` list, ``total_groups``, ``total_documents``.
+        """
+        return self._api_request(
+            f"/clusters/{cluster_id}/groups", method="GET",
+        )
+
+    def list_clusters(self) -> Dict[str, Any]:
+        """List all clusters in the namespace."""
+        return self._api_request("/clusters/list", body={})
+
+    def delete_cluster(self, cluster_id: str) -> Dict[str, Any]:
+        """Delete a cluster and its execution history."""
+        return self._api_request(f"/clusters/{cluster_id}", method="DELETE")
+
+    # ------------------------------------------------------------------
+    # Alerts
+    # ------------------------------------------------------------------
+
+    def create_alert(
+        self,
+        name: str,
+        retriever_id: Optional[str] = None,
+        notification_config: Optional[Dict[str, Any]] = None,
+        enabled: bool = True,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """Create an alert that fires when new documents match a retriever.
+
+        Alerts monitor document ingestion and trigger notifications
+        (webhook, Slack, email) when matches are found. They run
+        during batch processing (phase 3).
+
+        Args:
+            name: Alert name.
+            retriever_id: Retriever that defines matching logic.
+                Defaults to this store's ``retriever_id``.
+            notification_config: Dict with ``channels`` list, each having
+                ``channel_type`` (``"webhook"``, ``"slack"``, ``"email"``),
+                ``channel_id``, and ``config``. Also ``include_matches``
+                and ``include_scores`` booleans.
+            enabled: Whether the alert is active.
+
+        Returns:
+            Created alert with ``alert_id``, ``name``, etc.
+        """
+        body: Dict[str, Any] = {
+            "name": name,
+            "retriever_id": retriever_id or self.retriever_id,
+            "enabled": enabled,
+        }
+        if notification_config:
+            body["notification_config"] = notification_config
+        body.update(kwargs)
+        return self._api_request("/alerts", body=body)
+
+    def list_alerts(self) -> Dict[str, Any]:
+        """List all alerts in the namespace."""
+        return self._api_request("/alerts/list", body={})
+
+    def get_alert(self, alert_id: str) -> Dict[str, Any]:
+        """Get an alert by ID or name."""
+        return self._api_request(f"/alerts/{alert_id}", method="GET")
+
+    def get_alert_results(self, alert_id: str) -> Dict[str, Any]:
+        """Get the latest execution results for an alert.
+
+        Returns:
+            Dict with ``matches`` list (document_id, score, metadata).
+        """
+        return self._api_request(
+            f"/alerts/{alert_id}/results", method="GET",
+        )
+
+    def delete_alert(self, alert_id: str) -> Dict[str, Any]:
+        """Delete an alert and its execution history."""
+        return self._api_request(f"/alerts/{alert_id}", method="DELETE")
+
+    # ------------------------------------------------------------------
+    # Custom Plugins
+    # ------------------------------------------------------------------
+
+    def list_plugins(self) -> Dict[str, Any]:
+        """List custom plugins deployed to this namespace.
+
+        Returns:
+            List of plugins with ``plugin_id``, ``name``, ``feature_uri``,
+            ``deployment_status``, etc.
+        """
+        return self._api_request(
+            f"/namespaces/{self.namespace}/plugins", method="GET",
+        )
+
+    def get_plugin(self, plugin_id: str) -> Dict[str, Any]:
+        """Get details for a custom plugin.
+
+        Returns:
+            Plugin details including ``features`` (embedding dim, distance
+            metric), ``validation_status``, ``deployment_status``.
+        """
+        return self._api_request(
+            f"/namespaces/{self.namespace}/plugins/{plugin_id}",
+            method="GET",
+        )
+
+    def get_plugin_status(self, plugin_id: str) -> Dict[str, Any]:
+        """Check deployment status of a custom plugin.
+
+        Returns:
+            Dict with ``status`` (queued, pending, in_progress, deployed,
+            failed), ``message``, ``estimated_completion_seconds``.
+        """
+        return self._api_request(
+            f"/namespaces/{self.namespace}/plugins/{plugin_id}/status",
+            method="GET",
+        )
+
+    def test_plugin(
+        self,
+        plugin_id: str,
+        inputs: Dict[str, Any],
+        parameters: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Test a deployed realtime plugin with sample inputs.
+
+        Args:
+            plugin_id: Plugin ID.
+            inputs: Plugin-specific input dict.
+            parameters: Optional execution parameters.
+
+        Returns:
+            Dict with ``status``, ``raw_response``, ``response_type``.
+        """
+        body: Dict[str, Any] = {"inputs": inputs}
+        if parameters:
+            body["parameters"] = parameters
+        return self._api_request(
+            f"/namespaces/{self.namespace}/plugins/{plugin_id}/realtime/test",
+            body=body,
+        )
+
+    # ------------------------------------------------------------------
+    # Search
+    # ------------------------------------------------------------------
 
     def similarity_search(
         self,

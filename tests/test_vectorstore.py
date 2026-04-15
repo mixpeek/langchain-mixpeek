@@ -53,6 +53,12 @@ def _mock_upload(upload_result=None):
     return patch.object(MixpeekVectorStore, "_upload_object", return_value=result)
 
 
+def _mock_api_request(return_value=None):
+    """Mock the _api_request method on MixpeekVectorStore."""
+    result = return_value or {}
+    return patch.object(MixpeekVectorStore, "_api_request", return_value=result)
+
+
 class TestMixpeekVectorStore:
     def test_similarity_search_returns_documents(self):
         patcher, _ = _mock_mixpeek()
@@ -224,3 +230,205 @@ class TestMixpeekVectorStore:
         assert len(ids) == 2
         assert mock_upload.call_args_list[0][1]["metadata"] == {"title": "A"}
         assert mock_upload.call_args_list[1][1]["metadata"] == {"title": "B"}
+
+
+class TestTaxonomies:
+    def test_create_taxonomy(self):
+        patcher, _ = _mock_mixpeek()
+        api_patcher = _mock_api_request({"taxonomy_id": "tax_123", "taxonomy_name": "brands"})
+        with patcher, api_patcher as mock_api:
+            store = _make_store()
+            result = store.create_taxonomy(
+                name="brands",
+                config={"taxonomy_type": "flat", "retriever_id": "ret_test", "collection_id": "col_test"},
+                description="Brand classifier",
+            )
+
+        assert result["taxonomy_id"] == "tax_123"
+        call = mock_api.call_args
+        assert call[0][0] == "/taxonomies"
+        body = call[1]["body"]
+        assert body["taxonomy_name"] == "brands"
+        assert body["description"] == "Brand classifier"
+
+    def test_list_taxonomies(self):
+        patcher, _ = _mock_mixpeek()
+        api_patcher = _mock_api_request({"taxonomies": []})
+        with patcher, api_patcher as mock_api:
+            store = _make_store()
+            result = store.list_taxonomies()
+
+        assert "taxonomies" in result
+        mock_api.assert_called_once_with("/taxonomies/list", body={})
+
+    def test_get_taxonomy(self):
+        patcher, _ = _mock_mixpeek()
+        api_patcher = _mock_api_request({"taxonomy_id": "tax_123"})
+        with patcher, api_patcher as mock_api:
+            store = _make_store()
+            store.get_taxonomy("tax_123")
+
+        mock_api.assert_called_once_with("/taxonomies/tax_123", method="GET")
+
+    def test_execute_taxonomy(self):
+        patcher, _ = _mock_mixpeek()
+        api_patcher = _mock_api_request({"results": []})
+        with patcher, api_patcher as mock_api:
+            store = _make_store()
+            store.execute_taxonomy("tax_123")
+
+        mock_api.assert_called_once_with("/taxonomies/execute/tax_123", body={})
+
+    def test_delete_taxonomy(self):
+        patcher, _ = _mock_mixpeek()
+        api_patcher = _mock_api_request({"status": "deleted"})
+        with patcher, api_patcher as mock_api:
+            store = _make_store()
+            store.delete_taxonomy("tax_123")
+
+        mock_api.assert_called_once_with("/taxonomies/tax_123", method="DELETE")
+
+
+class TestClusters:
+    def test_create_cluster_defaults_to_store_collection(self):
+        patcher, _ = _mock_mixpeek()
+        api_patcher = _mock_api_request({"cluster_id": "cls_123"})
+        with patcher, api_patcher as mock_api:
+            store = _make_store()
+            result = store.create_cluster(
+                cluster_type="vector",
+                vector_config={"algorithm": "kmeans", "algorithm_params": {"n_clusters": 5}},
+            )
+
+        assert result["cluster_id"] == "cls_123"
+        body = mock_api.call_args[1].get("body") or mock_api.call_args[0][1]
+        assert body["collection_ids"] == ["col_test"]
+        assert body["cluster_type"] == "vector"
+
+    def test_execute_cluster(self):
+        patcher, _ = _mock_mixpeek()
+        api_patcher = _mock_api_request({"status": "running"})
+        with patcher, api_patcher as mock_api:
+            store = _make_store()
+            store.execute_cluster("cls_123")
+
+        mock_api.assert_called_once_with("/clusters/cls_123/execute", body={})
+
+    def test_get_cluster_groups(self):
+        patcher, _ = _mock_mixpeek()
+        api_patcher = _mock_api_request({"groups": [], "total_groups": 0})
+        with patcher, api_patcher as mock_api:
+            store = _make_store()
+            result = store.get_cluster_groups("cls_123")
+
+        assert result["total_groups"] == 0
+        mock_api.assert_called_once_with("/clusters/cls_123/groups", method="GET")
+
+    def test_list_clusters(self):
+        patcher, _ = _mock_mixpeek()
+        api_patcher = _mock_api_request({"clusters": []})
+        with patcher, api_patcher as mock_api:
+            store = _make_store()
+            store.list_clusters()
+
+        mock_api.assert_called_once_with("/clusters/list", body={})
+
+    def test_delete_cluster(self):
+        patcher, _ = _mock_mixpeek()
+        api_patcher = _mock_api_request({"status": "deleted"})
+        with patcher, api_patcher as mock_api:
+            store = _make_store()
+            store.delete_cluster("cls_123")
+
+        mock_api.assert_called_once_with("/clusters/cls_123", method="DELETE")
+
+
+class TestAlerts:
+    def test_create_alert_defaults_to_store_retriever(self):
+        patcher, _ = _mock_mixpeek()
+        api_patcher = _mock_api_request({"alert_id": "alt_123", "name": "brand-match"})
+        with patcher, api_patcher as mock_api:
+            store = _make_store()
+            result = store.create_alert(
+                name="brand-match",
+                notification_config={
+                    "channels": [{"channel_type": "webhook", "config": {"url": "https://example.com/hook"}}],
+                    "include_matches": True,
+                    "include_scores": True,
+                },
+            )
+
+        assert result["alert_id"] == "alt_123"
+        body = mock_api.call_args[1].get("body") or mock_api.call_args[0][1]
+        assert body["retriever_id"] == "ret_test"
+        assert body["name"] == "brand-match"
+
+    def test_get_alert_results(self):
+        patcher, _ = _mock_mixpeek()
+        api_patcher = _mock_api_request({"matches": [{"document_id": "doc_1", "score": 0.9}]})
+        with patcher, api_patcher as mock_api:
+            store = _make_store()
+            result = store.get_alert_results("alt_123")
+
+        assert len(result["matches"]) == 1
+        mock_api.assert_called_once_with("/alerts/alt_123/results", method="GET")
+
+    def test_list_alerts(self):
+        patcher, _ = _mock_mixpeek()
+        api_patcher = _mock_api_request({"alerts": []})
+        with patcher, api_patcher as mock_api:
+            store = _make_store()
+            store.list_alerts()
+
+        mock_api.assert_called_once_with("/alerts/list", body={})
+
+    def test_delete_alert(self):
+        patcher, _ = _mock_mixpeek()
+        api_patcher = _mock_api_request({"status": "deleted"})
+        with patcher, api_patcher as mock_api:
+            store = _make_store()
+            store.delete_alert("alt_123")
+
+        mock_api.assert_called_once_with("/alerts/alt_123", method="DELETE")
+
+
+class TestPlugins:
+    def test_list_plugins(self):
+        patcher, _ = _mock_mixpeek()
+        api_patcher = _mock_api_request([{"plugin_id": "plg_1", "name": "my_extractor"}])
+        with patcher, api_patcher as mock_api:
+            store = _make_store()
+            store.list_plugins()
+
+        mock_api.assert_called_once_with("/namespaces/test-ns/plugins", method="GET")
+
+    def test_get_plugin(self):
+        patcher, _ = _mock_mixpeek()
+        api_patcher = _mock_api_request({"plugin_id": "plg_1", "deployment_status": "deployed"})
+        with patcher, api_patcher as mock_api:
+            store = _make_store()
+            result = store.get_plugin("plg_1")
+
+        assert result["deployment_status"] == "deployed"
+        mock_api.assert_called_once_with("/namespaces/test-ns/plugins/plg_1", method="GET")
+
+    def test_get_plugin_status(self):
+        patcher, _ = _mock_mixpeek()
+        api_patcher = _mock_api_request({"status": "deployed", "message": "Running"})
+        with patcher, api_patcher as mock_api:
+            store = _make_store()
+            result = store.get_plugin_status("plg_1")
+
+        assert result["status"] == "deployed"
+        mock_api.assert_called_once_with("/namespaces/test-ns/plugins/plg_1/status", method="GET")
+
+    def test_test_plugin(self):
+        patcher, _ = _mock_mixpeek()
+        api_patcher = _mock_api_request({"status": "success", "raw_response": {"embedding": [0.1]}})
+        with patcher, api_patcher as mock_api:
+            store = _make_store()
+            result = store.test_plugin("plg_1", inputs={"text": "hello"})
+
+        assert result["status"] == "success"
+        body = mock_api.call_args[1].get("body") or mock_api.call_args[0][1]
+        assert body["inputs"] == {"text": "hello"}
