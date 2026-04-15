@@ -1,0 +1,41 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "langchain-mixpeek"
+version = "0.1.2"
+description = "LangChain integration for Mixpeek — multimodal retriever and tool for AI agents"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [{name = "Mixpeek", email = "info@mixpeek.com"}]
+keywords = ["langchain", "mixpeek", "multimodal", "retriever", "rag", "agents", "video", "ai"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+requires-python = ">=3.9"
+dependencies = [
+    "mixpeek>=0.1.0",
+    "langchain-core>=0.1.0",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio", "langchain", "langchain-openai"]
+
+[project.urls]
+Homepage = "https://mixpeek.com"
+Documentation = "https://docs.mixpeek.com/agent-integrations/langchain"
+Repository = "https://github.com/mixpeek/langchain-mixpeek"
+Issues = "https://github.com/mixpeek/langchain-mixpeek/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/langchain_mixpeek"]
