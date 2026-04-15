@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "langchain-mixpeek"
-version = "0.4.2"
+version = "0.4.3"
 description = "Give your LangChain agents eyes, ears, and memory — multimodal search, ingestion, and monitoring for video, images, audio, and documents"
 readme = "README.md"
 license = {text = "MIT"}
@@ -19,6 +19,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 requires-python = ">=3.9"
@@ -29,13 +30,42 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-asyncio", "langchain", "langchain-openai"]
+dev = [
+    "pytest>=7.3.0",
+    "pytest-asyncio>=0.21.1",
+    "pytest-mock>=3.10.0",
+    "ruff>=0.4.0",
+    "mypy>=1.10.0",
+]
 
 [project.urls]
 Homepage = "https://mixpeek.com"
 Documentation = "https://docs.mixpeek.com/agent-integrations/langchain"
 Repository = "https://github.com/mixpeek/langchain-mixpeek"
 Issues = "https://github.com/mixpeek/langchain-mixpeek/issues"
+Changelog = "https://github.com/mixpeek/langchain-mixpeek/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/langchain_mixpeek"]
+
+[tool.mypy]
+disallow_untyped_defs = true
+warn_return_any = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = "mixpeek.*"
+ignore_missing_imports = true
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B", "SIM", "TCH"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["langchain_mixpeek"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = [
+    "integration: marks tests that require API keys",
+]
