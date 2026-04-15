@@ -1,18 +1,15 @@
 """
 Agents Are Blind — Mixpeek Gives Them Eyes
 
-This demo shows a LangChain agent using MixpeekTool to search across
-multimodal content (images, video, audio, documents) and reason over
-the results. Without Mixpeek, the agent has no way to "see" or "hear"
-unstructured media. With it, the agent can answer questions about
-visual content, find specific moments in video, and analyze brand assets.
+This demo shows LangChain agents using Mixpeek to search, ingest, classify,
+cluster, and monitor multimodal content (images, video, audio, documents).
 
 Usage:
-    export OPENAI_API_KEY=sk-...
+    export ANTHROPIC_API_KEY=sk-ant-...  # or OPENAI_API_KEY
     python examples/agent_demo.py
 
 Requires:
-    pip install langchain-mixpeek langchain-openai langgraph
+    pip install langchain-mixpeek langchain-anthropic langgraph
 """
 
 import os
@@ -20,7 +17,7 @@ import sys
 
 from langchain_core.prompts import ChatPromptTemplate
 
-from langchain_mixpeek import MixpeekRetriever, MixpeekTool
+from langchain_mixpeek import MixpeekRetriever, MixpeekTool, MixpeekToolkit, MixpeekVectorStore
 
 # ---------------------------------------------------------------------------
 # Config — swap these for your own namespace/retriever
@@ -44,8 +41,11 @@ def _get_llm():
     return None
 
 
+# ---------------------------------------------------------------------------
+# Demo 0: Raw retriever (no LLM)
+# ---------------------------------------------------------------------------
+
 def run_retriever_e2e():
-    """Bare retriever E2E — no LLM, just verify Mixpeek returns docs."""
     print("=" * 60)
     print("DEMO 0: Raw Retriever E2E (no LLM)")
     print("=" * 60)
@@ -68,16 +68,49 @@ def run_retriever_e2e():
         print()
 
 
-def run_retriever_chain():
-    """RAG chain: retriever feeds context to LLM."""
+# ---------------------------------------------------------------------------
+# Demo 1: as_tool() — retriever becomes an agent tool in one line
+# ---------------------------------------------------------------------------
+
+def run_as_tool():
     print("=" * 60)
-    print("DEMO 1: Retriever → RAG Chain")
+    print("DEMO 1: retriever.as_tool() — one-line conversion")
     print("=" * 60)
 
-    # Pick an available LLM
+    import json
+
+    retriever = MixpeekRetriever(
+        api_key=MIXPEEK_API_KEY,
+        retriever_id=RETRIEVER_ID,
+        namespace=NAMESPACE,
+        top_k=3,
+        content_field="trend_insight",
+    )
+
+    tool = retriever.as_tool()
+    print(f"\n  Tool name: {tool.name}")
+    print(f"  Tool description: {tool.description[:80]}...")
+
+    result = tool.invoke("bold graphics")
+    parsed = json.loads(result)
+    print(f"\n  Results: {len(parsed)} documents")
+    for r in parsed[:2]:
+        print(f"    score={r['score']} | {r['content'][:120]}")
+    print()
+
+
+# ---------------------------------------------------------------------------
+# Demo 2: RAG chain
+# ---------------------------------------------------------------------------
+
+def run_retriever_chain():
+    print("=" * 60)
+    print("DEMO 2: Retriever → RAG Chain")
+    print("=" * 60)
+
     llm = _get_llm()
     if llm is None:
-        print("\nSkipped — no LLM API key available (set OPENAI_API_KEY or ANTHROPIC_API_KEY)")
+        print("\nSkipped — no LLM API key (set ANTHROPIC_API_KEY or OPENAI_API_KEY)")
         return
 
     retriever = MixpeekRetriever(
@@ -89,10 +122,10 @@ def run_retriever_chain():
     )
 
     prompt = ChatPromptTemplate.from_template(
-        "You are a brand analyst. Use the search results below to answer the question.\n\n"
+        "You are a brand analyst. Use the search results below to answer.\n\n"
         "Search results:\n{context}\n\n"
         "Question: {question}\n\n"
-        "Answer concisely, citing specific items when relevant."
+        "Answer concisely, citing specific items."
     )
 
     chain = {"context": retriever, "question": lambda x: x} | prompt | llm
@@ -104,57 +137,18 @@ def run_retriever_chain():
     print(f"Answer: {response.content}\n")
 
 
-def run_tool_e2e():
-    """Tool E2E — verify MixpeekTool returns structured JSON for agents."""
-    print("=" * 60)
-    print("DEMO 1.5: MixpeekTool E2E (no LLM)")
-    print("=" * 60)
-
-    import json
-
-    trend_tool = MixpeekTool(
-        api_key=MIXPEEK_API_KEY,
-        retriever_id="ret_039d833935b255",
-        namespace=NAMESPACE,
-        top_k=3,
-        name="search_trends",
-        description="Search BAPE's visual archive for streetwear trend connections.",
-        content_field="trend_insight",
-    )
-
-    brand_tool = MixpeekTool(
-        api_key=MIXPEEK_API_KEY,
-        retriever_id="ret_b990bf1f7851f9",
-        namespace=NAMESPACE,
-        top_k=3,
-        name="check_brand_alignment",
-        description="Check whether items align with a specific style or concept.",
-        content_field="brand_alignment",
-    )
-
-    print("\n--- search_trends('bold graphics') ---")
-    result = trend_tool.invoke("bold graphics")
-    parsed = json.loads(result)
-    for r in parsed:
-        print(f"  score={r['score']} | {r['content'][:150]}")
-
-    print("\n--- check_brand_alignment('minimalist design') ---")
-    result = brand_tool.invoke("minimalist design")
-    parsed = json.loads(result)
-    for r in parsed:
-        print(f"  score={r['score']} | {r['content'][:150]}")
-    print()
-
+# ---------------------------------------------------------------------------
+# Demo 3: ReAct agent with multi-retriever tools
+# ---------------------------------------------------------------------------
 
 def run_agent():
-    """ReAct agent with MixpeekTool — the agent decides when to search."""
     print("=" * 60)
-    print("DEMO 2: ReAct Agent with MixpeekTool")
+    print("DEMO 3: ReAct Agent with Multiple MixpeekTools")
     print("=" * 60)
 
     llm = _get_llm()
     if llm is None:
-        print("\nSkipped — no LLM API key available (set OPENAI_API_KEY or ANTHROPIC_API_KEY)")
+        print("\nSkipped — no LLM API key (set ANTHROPIC_API_KEY or OPENAI_API_KEY)")
         return
 
     from langgraph.prebuilt import create_react_agent
@@ -167,7 +161,7 @@ def run_agent():
         name="search_trends",
         description=(
             "Search BAPE's visual archive for streetwear trend connections. "
-            "Input: natural language query about fashion trends, styles, or aesthetics."
+            "Input: natural language query about fashion trends or aesthetics."
         ),
         content_field="trend_insight",
     )
@@ -179,56 +173,137 @@ def run_agent():
         top_k=3,
         name="check_brand_alignment",
         description=(
-            "Check whether items in BAPE's archive align with a specific style or concept. "
-            "Input: natural language description of a style, product, or concept to check against."
+            "Check whether items in the archive align with a style or concept. "
+            "Input: description of a style to check against."
         ),
         content_field="brand_alignment",
     )
 
-    tools = [trend_tool, brand_tool]
-
     agent = create_react_agent(
         llm,
-        tools,
+        [trend_tool, brand_tool],
         prompt=(
             "You are a brand strategist for a streetwear company. "
-            "You have access to tools that search a visual archive of brand assets "
-            "(images, video frames, product photos). Use them to answer questions "
-            "about trends, brand alignment, and creative direction.\n\n"
-            "Always search before answering — never guess about what's in the archive."
+            "Use tools to search the visual archive before answering."
         ),
     )
 
-    questions = [
-        "What are the key visual trends in BAPE's archive?",
-        "Does BAPE have items that align with minimalist streetwear?",
-    ]
+    question = "What are the key visual trends in BAPE's archive?"
+    print(f"\nQuestion: {question}")
+    print("-" * 40)
+    result = agent.invoke({"messages": [("human", question)]})
+    for msg in reversed(result["messages"]):
+        if hasattr(msg, "content") and msg.type == "ai" and msg.content:
+            print(f"Answer: {msg.content}\n")
+            break
 
-    for q in questions:
-        print(f"\nQuestion: {q}")
-        print("-" * 40)
-        result = agent.invoke({"messages": [("human", q)]})
-        for msg in reversed(result["messages"]):
-            if hasattr(msg, "content") and msg.type == "ai" and msg.content:
-                print(f"Answer: {msg.content}\n")
-                break
+
+# ---------------------------------------------------------------------------
+# Demo 4: MixpeekToolkit — full agent with 6 capabilities
+# ---------------------------------------------------------------------------
+
+def run_toolkit_agent():
+    print("=" * 60)
+    print("DEMO 4: MixpeekToolkit — Full Agent (search + ingest + classify)")
+    print("=" * 60)
+
+    llm = _get_llm()
+    if llm is None:
+        print("\nSkipped — no LLM API key (set ANTHROPIC_API_KEY or OPENAI_API_KEY)")
+        return
+
+    from langgraph.prebuilt import create_react_agent
+
+    toolkit = MixpeekToolkit(
+        api_key=MIXPEEK_API_KEY,
+        namespace=NAMESPACE,
+        bucket_id="bkt_0184971a",
+        collection_id="col_ae05ab395a",
+        retriever_id=RETRIEVER_ID,
+    )
+
+    print(f"\n  Tools available: {[t.name for t in toolkit.get_tools()]}")
+
+    # Give the agent search + ingest + process (scoped)
+    agent = create_react_agent(
+        llm,
+        toolkit.get_tools(actions=["search", "ingest", "process"]),
+        prompt=(
+            "You are a multimodal AI assistant with eyes and ears. "
+            "You can search video, images, and audio content using mixpeek_search. "
+            "You can upload new content using mixpeek_ingest. "
+            "You can trigger processing using mixpeek_process. "
+            "Always search before answering questions about content."
+        ),
+    )
+
+    question = "Search the archive for camo patterns and describe what you find."
+    print(f"\n  Question: {question}")
+    print("-" * 40)
+    result = agent.invoke({"messages": [("human", question)]})
+    for msg in reversed(result["messages"]):
+        if hasattr(msg, "content") and msg.type == "ai" and msg.content:
+            print(f"  Answer: {msg.content[:500]}\n")
+            break
+
+
+# ---------------------------------------------------------------------------
+# Demo 5: VectorStore bridge methods
+# ---------------------------------------------------------------------------
+
+def run_store_bridges():
+    print("=" * 60)
+    print("DEMO 5: VectorStore → Retriever / Tool / Toolkit bridges")
+    print("=" * 60)
+
+    # Minimal config (search-only)
+    store = MixpeekVectorStore.from_retriever(
+        api_key=MIXPEEK_API_KEY,
+        namespace=NAMESPACE,
+        retriever_id=RETRIEVER_ID,
+        content_field="trend_insight",
+    )
+    print(f"\n  from_retriever() → store with retriever_id={store.retriever_id}")
+
+    # Convert to retriever
+    retriever = store.as_retriever()
+    print(f"  as_retriever() → {type(retriever).__name__}")
+
+    # Convert to tool
+    tool = store.as_tool()
+    print(f"  as_tool() → {tool.name}")
+
+    # Convert to toolkit
+    toolkit = store.as_toolkit()
+    tools = toolkit.get_tools()
+    print(f"  as_toolkit() → {len(tools)} tools: {[t.name for t in tools]}")
+
+    # Actually search
+    docs = store.similarity_search("camo", k=2)
+    print(f"\n  similarity_search('camo') → {len(docs)} docs")
+    if docs:
+        print(f"    [{1}] score={docs[0].metadata.get('score'):.3f} | {docs[0].page_content[:100]}")
+    print()
 
 
 if __name__ == "__main__":
-    # Demo 0: Raw retriever (always runs — no LLM needed)
+    # Always runs (no LLM needed)
     run_retriever_e2e()
+    run_as_tool()
+    run_store_bridges()
 
-    # Demo 1.5: Tool E2E (always runs — no LLM needed)
-    run_tool_e2e()
-
-    # Demo 1: RAG chain (needs LLM)
+    # Needs LLM
     try:
         run_retriever_chain()
     except Exception as e:
-        print(f"\nSkipped — LLM error: {e}\n")
+        print(f"\nSkipped — error: {e}\n")
 
-    # Demo 2: Agentic tool use (needs LLM)
     try:
         run_agent()
     except Exception as e:
-        print(f"\nSkipped — LLM error: {e}\n")
+        print(f"\nSkipped — error: {e}\n")
+
+    try:
+        run_toolkit_agent()
+    except Exception as e:
+        print(f"\nSkipped — error: {e}\n")
